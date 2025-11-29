@@ -128,6 +128,22 @@ When the LLM requests a tool (via `function_call`/`tool_calls`), Synaptic invoke
 the handler, appends the tool response to the conversation, and re-issues the
 chat request until the model produces a final assistant message.
 
+### Structured JSON responses
+
+OpenAI's `response_format: %{type: "json_object"}` (and compatible JSON schema
+formats) are supported end-to-end. Pass the option through `Synaptic.Tools.chat/2`
+and the OpenAI adapter will add it to the upstream payload and automatically
+decode the assistant response:
+
+```elixir
+{:ok, %{"summary" => summary}} =
+  Synaptic.Tools.chat(messages, agent: :mini, response_format: :json_object)
+```
+
+If the model returns invalid JSON while JSON mode is enabled, the call fails
+with `{:error, :invalid_json_response}` so workflows can retry or surface the
+failure.
+
 ### Writing workflows
 
 ```elixir
