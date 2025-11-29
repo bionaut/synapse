@@ -1,4 +1,4 @@
-defmodule Synapse.Step do
+defmodule Synaptic.Step do
   @moduledoc """
   Metadata structure for compiled workflow steps.
   """
@@ -35,6 +35,6 @@ defmodule Synapse.Step do
 
   @doc false
   def run(%__MODULE__{} = step, workflow_module, context) do
-    apply(workflow_module, :__synapse_handle__, [step.name, context])
+    apply(workflow_module, :__synaptic_handle__, [step.name, context])
   end
 end

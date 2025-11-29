@@ -1,10 +1,10 @@
 import Config
 
-# Synapse workflow defaults
-config :synapse, Synapse.Tools, llm_adapter: Synapse.Tools.OpenAI
+# Synaptic workflow defaults
+config :synaptic, Synaptic.Tools, llm_adapter: Synaptic.Tools.OpenAI
 
-config :synapse, Synapse.Tools.OpenAI,
-  finch: Synapse.Finch,
+config :synaptic, Synaptic.Tools.OpenAI,
+  finch: Synaptic.Finch,
   model: "gpt-4o-mini"
 
 config :logger, :console,

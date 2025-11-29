@@ -1,10 +1,10 @@
-defmodule Synapse do
+defmodule Synaptic do
   @moduledoc """
-  Synapse provides a declarative workflow engine with a DSL for orchestrating
+  Synaptic provides a declarative workflow engine with a DSL for orchestrating
   LLM-backed steps, human-in-the-loop pauses, and resumable executions.
   """
 
-  alias Synapse.Engine
+  alias Synaptic.Engine
   alias Phoenix.PubSub
 
   @doc """
@@ -47,7 +47,7 @@ defmodule Synapse do
   module, and snapshot context.
   """
   def list_runs do
-    for {run_id, pid} <- Synapse.Registry.entries(), reduce: [] do
+    for {run_id, pid} <- Synaptic.Registry.entries(), reduce: [] do
       acc ->
         case safe_get_state(pid) do
           %{workflow: workflow, context: context, status: status} ->
@@ -70,20 +70,20 @@ defmodule Synapse do
   @doc """
   Subscribes the calling process to PubSub events for the given `run_id`.
 
-  Events are delivered as `{:synapse_event, %{run_id: ..., event: ...}}` tuples.
+  Events are delivered as `{:synaptic_event, %{run_id: ..., event: ...}}` tuples.
   """
   def subscribe(run_id) when is_binary(run_id) do
-    PubSub.subscribe(Synapse.PubSub, topic(run_id))
+    PubSub.subscribe(Synaptic.PubSub, topic(run_id))
   end
 
   @doc """
   Unsubscribes the calling process from workflow events for the given `run_id`.
   """
   def unsubscribe(run_id) when is_binary(run_id) do
-    PubSub.unsubscribe(Synapse.PubSub, topic(run_id))
+    PubSub.unsubscribe(Synaptic.PubSub, topic(run_id))
   end
 
-  defp topic(run_id), do: "synapse:run:" <> run_id
+  defp topic(run_id), do: "synaptic:run:" <> run_id
 
   defp safe_get_state(pid) do
     try do

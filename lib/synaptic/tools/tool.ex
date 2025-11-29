@@ -1,4 +1,4 @@
-defmodule Synapse.Tools.Tool do
+defmodule Synaptic.Tools.Tool do
   @moduledoc """
   Struct describing an LLM-callable tool.
   """

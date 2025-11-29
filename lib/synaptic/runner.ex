@@ -1,13 +1,16 @@
-defmodule Synapse.Runner do
-  @moduledoc false
+defmodule Synaptic.Runner do
+  @moduledoc """
+  GenServer that executes a workflow definition, tracking context, waiting
+  states, retries, history, PubSub events, and suspend/resume logic.
+  """
 
   use GenServer
   require Logger
 
-  alias Synapse.{Registry, Step}
+  alias Synaptic.{Registry, Step}
   alias Phoenix.PubSub
 
-  @pubsub Synapse.PubSub
+  @pubsub Synaptic.PubSub
 
   @type state :: %{
           run_id: String.t(),
@@ -27,7 +30,7 @@ defmodule Synapse.Runner do
     run_id = Keyword.fetch!(opts, :run_id)
 
     %{
-      id: {:synapse_runner, run_id},
+      id: {:synaptic_runner, run_id},
       start: {__MODULE__, :start_link, [opts]},
       restart: :transient
     }
@@ -243,11 +246,11 @@ defmodule Synapse.Runner do
       |> Map.put(:run_id, state.run_id)
       |> Map.put(:current_step, current_step_name(state))
 
-    PubSub.broadcast(@pubsub, topic(state.run_id), {:synapse_event, event})
+    PubSub.broadcast(@pubsub, topic(state.run_id), {:synaptic_event, event})
     state
   end
 
-  defp topic(run_id), do: "synapse:run:" <> run_id
+  defp topic(run_id), do: "synaptic:run:" <> run_id
 
   defp handle_step_error(step, reason, state) do
     remaining = Map.get(state.retry_budget, step.name, 0)

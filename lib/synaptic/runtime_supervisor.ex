@@ -1,5 +1,7 @@
-defmodule Synapse.RuntimeSupervisor do
-  @moduledoc false
+defmodule Synaptic.RuntimeSupervisor do
+  @moduledoc """
+  DynamicSupervisor responsible for spinning up `Synaptic.Runner` processes.
+  """
 
   use DynamicSupervisor
 

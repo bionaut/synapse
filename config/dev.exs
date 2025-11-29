@@ -1,6 +1,6 @@
 import Config
 
-config :synapse, Synapse.Tools.OpenAI,
+config :synaptic, Synaptic.Tools.OpenAI,
   api_key: System.get_env("OPENAI_API_KEY"),
   model: "gpt-4o-mini"
 

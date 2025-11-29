@@ -1,11 +1,11 @@
 if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
-  defmodule Synapse.Dev.DemoWorkflow do
+  defmodule Synaptic.Dev.DemoWorkflow do
     @moduledoc """
     A small workflow available only in the dev environment so you can try the
-    Synapse engine end-to-end from `iex -S mix`.
+    Synaptic engine end-to-end from `iex -S mix`.
     """
 
-    use Synapse.Workflow
+    use Synaptic.Workflow
     require Logger
 
     @default_topic "Learning Elixir fundamentals"
@@ -214,7 +214,7 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
     end
 
     defp safe_chat(messages) do
-      tool = %Synapse.Tools.Tool{
+      tool = %Synaptic.Tools.Tool{
         name: "learning_resources",
         description: "Returns a short list of resources for a topic.",
         schema: %{
@@ -231,7 +231,7 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
       }
 
       try do
-        Synapse.Tools.chat(messages, tools: [tool])
+        Synaptic.Tools.chat(messages, tools: [tool])
       rescue
         error -> {:error, {:exception, error}}
       end

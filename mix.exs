@@ -1,13 +1,21 @@
-defmodule Synapse.MixProject do
+defmodule Synaptic.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :synapse,
+      app: :synaptic,
       version: "0.1.0",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      description: description(),
+      source_url: "https://github.com/bionaut/synaptic",
+      package: package(),
+      docs: [
+        main: "readme",
+        extras: ["README.md", "TECHNICAL.md"],
+        authors: ["Synaptic contributors"]
+      ],
       deps: deps()
     ]
   end
@@ -17,13 +25,13 @@ defmodule Synapse.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {Synapse.Application, []},
+      mod: {Synaptic.Application, []},
       extra_applications: [:logger, :runtime_tools, :observer, :wx]
     ]
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:test), do: ["lib"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Specifies your project dependencies.
@@ -33,7 +41,19 @@ defmodule Synapse.MixProject do
     [
       {:phoenix_pubsub, "~> 2.1"},
       {:finch, "~> 0.13"},
-      {:jason, "~> 1.2"}
+      {:jason, "~> 1.2"},
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false}
+    ]
+  end
+
+  defp description do
+    "Workflow engine for orchestrating LLM-backed + human-in-the-loop automations"
+  end
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/bionaut/synaptic"}
     ]
   end
 end

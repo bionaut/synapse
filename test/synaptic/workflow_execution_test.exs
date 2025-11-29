@@ -1,8 +1,8 @@
-defmodule Synapse.WorkflowExecutionTest do
+defmodule Synaptic.WorkflowExecutionTest do
   use ExUnit.Case
 
   defmodule ApprovalWorkflow do
-    use Synapse.Workflow
+    use Synaptic.Workflow
 
     step :prepare, output: %{prepared: :boolean} do
       {:ok, %{prepared: true}}
@@ -30,7 +30,7 @@ defmodule Synapse.WorkflowExecutionTest do
   end
 
   defmodule AlwaysFailWorkflow do
-    use Synapse.Workflow
+    use Synaptic.Workflow
 
     step :flaky, retry: 1 do
       {:error, :boom}
@@ -40,52 +40,53 @@ defmodule Synapse.WorkflowExecutionTest do
   end
 
   test "workflow suspends and resumes" do
-    {:ok, run_id} = Synapse.start(ApprovalWorkflow, %{})
+    {:ok, run_id} = Synaptic.start(ApprovalWorkflow, %{})
 
-    assert %{status: :waiting_for_human, current_step: :human_review} = Synapse.inspect(run_id)
+    assert %{status: :waiting_for_human, current_step: :human_review} = Synaptic.inspect(run_id)
 
-    assert :ok = Synapse.resume(run_id, %{approved: true})
+    assert :ok = Synaptic.resume(run_id, %{approved: true})
     snapshot = wait_for(run_id, :completed)
 
     assert snapshot.context[:status] == :approved
-    assert List.last(Synapse.history(run_id))[:event] == :completed
+    assert List.last(Synaptic.history(run_id))[:event] == :completed
   end
 
   test "rejects invalid resume payload" do
-    {:ok, run_id} = Synapse.start(ApprovalWorkflow, %{})
+    {:ok, run_id} = Synaptic.start(ApprovalWorkflow, %{})
 
-    assert {:error, {:missing_fields, [:approved]}} = Synapse.resume(run_id, %{})
+    assert {:error, {:missing_fields, [:approved]}} = Synaptic.resume(run_id, %{})
   end
 
   test "step retries before failing" do
-    {:ok, run_id} = Synapse.start(AlwaysFailWorkflow, %{})
+    {:ok, run_id} = Synaptic.start(AlwaysFailWorkflow, %{})
     snapshot = wait_for(run_id, :failed)
 
     assert snapshot.last_error == :boom
-    history = Synapse.history(run_id)
+    history = Synaptic.history(run_id)
     assert Enum.count(Enum.filter(history, &(&1[:status] == :error))) >= 1
   end
 
   test "stop halts a workflow and emits event" do
-    {:ok, run_id} = Synapse.start(ApprovalWorkflow, %{})
+    {:ok, run_id} = Synaptic.start(ApprovalWorkflow, %{})
     wait_for(run_id, :waiting_for_human)
 
-    :ok = Synapse.subscribe(run_id)
-    on_exit(fn -> Synapse.unsubscribe(run_id) end)
+    :ok = Synaptic.subscribe(run_id)
+    on_exit(fn -> Synaptic.unsubscribe(run_id) end)
 
-    assert :ok = Synapse.stop(run_id, :user_cancelled)
+    assert :ok = Synaptic.stop(run_id, :user_cancelled)
 
-    assert_receive {:synapse_event, %{event: :stopped, reason: :user_cancelled, run_id: ^run_id}},
+    assert_receive {:synaptic_event,
+                    %{event: :stopped, reason: :user_cancelled, run_id: ^run_id}},
                    1_000
 
-    assert {:error, :not_found} = Synapse.stop(run_id)
+    assert {:error, :not_found} = Synaptic.stop(run_id)
   end
 
   defp wait_for(run_id, status, attempts \\ 20)
   defp wait_for(_run_id, _status, 0), do: flunk("workflow did not reach desired status")
 
   defp wait_for(run_id, status, attempts) do
-    snapshot = Synapse.inspect(run_id)
+    snapshot = Synaptic.inspect(run_id)
 
     if snapshot.status == status do
       snapshot

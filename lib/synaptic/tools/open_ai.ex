@@ -1,4 +1,4 @@
-defmodule Synapse.Tools.OpenAI do
+defmodule Synaptic.Tools.OpenAI do
   @moduledoc """
   Minimal OpenAI chat client built on Finch.
   """
@@ -56,11 +56,11 @@ defmodule Synapse.Tools.OpenAI do
     opts[:api_key] ||
       config(opts)[:api_key] ||
       System.get_env("OPENAI_API_KEY") ||
-      raise "Synapse OpenAI adapter requires an API key"
+      raise "Synaptic OpenAI adapter requires an API key"
   end
 
   defp finch(opts) do
-    opts[:finch] || config(opts)[:finch] || Synapse.Finch
+    opts[:finch] || config(opts)[:finch] || Synaptic.Finch
   end
 
   defp parse_response(body) do
@@ -89,5 +89,5 @@ defmodule Synapse.Tools.OpenAI do
     end
   end
 
-  defp config(_opts), do: Application.get_env(:synapse, __MODULE__, [])
+  defp config(_opts), do: Application.get_env(:synaptic, __MODULE__, [])
 end

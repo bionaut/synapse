@@ -1,7 +1,10 @@
-defmodule Synapse.Application do
+defmodule Synaptic.Application do
   # See https://hexdocs.pm/elixir/Application.html
   # for more information on OTP Applications
-  @moduledoc false
+  @moduledoc """
+  OTP application entry point that starts the registry, runtime supervisor,
+  PubSub, and Finch pool required by Synaptic.
+  """
 
   use Application
 
@@ -9,17 +12,17 @@ defmodule Synapse.Application do
   @spec start(any(), any()) :: {:error, any()} | {:ok, pid()}
   def start(_type, _args) do
     children = [
-      Synapse.Registry,
-      Synapse.RuntimeSupervisor,
-      {Phoenix.PubSub, name: Synapse.PubSub},
-      {Finch, name: Synapse.Finch}
+      Synaptic.Registry,
+      Synaptic.RuntimeSupervisor,
+      {Phoenix.PubSub, name: Synaptic.PubSub},
+      {Finch, name: Synaptic.Finch}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [
       strategy: :one_for_one,
-      name: Synapse.Supervisor
+      name: Synaptic.Supervisor
     ]
 
     Supervisor.start_link(children, opts)

@@ -1,7 +1,9 @@
-defmodule Synapse.Engine do
-  @moduledoc false
+defmodule Synaptic.Engine do
+  @moduledoc """
+  Internal orchestrator that glues workflow definitions to runtime runners.
+  """
 
-  alias Synapse.{Runner, Workflow}
+  alias Synaptic.{Runner, Workflow}
 
   def start(workflow_module, input, opts) do
     definition = Workflow.definition(workflow_module)
@@ -10,7 +12,7 @@ defmodule Synapse.Engine do
     child_spec =
       {Runner, workflow: workflow_module, definition: definition, run_id: run_id, context: input}
 
-    case DynamicSupervisor.start_child(Synapse.RuntimeSupervisor, child_spec) do
+    case DynamicSupervisor.start_child(Synaptic.RuntimeSupervisor, child_spec) do
       {:ok, _pid} ->
         {:ok, run_id}
 

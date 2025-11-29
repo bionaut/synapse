@@ -1,19 +1,19 @@
-# Synapse
+# Synaptic
 
-This repository hosts **Synapse**, a database-free workflow engine for
+This repository hosts **Synaptic**, a database-free workflow engine for
 LLM-assisted automations with human-in-the-loop support (Phase 1 of the spec).
 If you want the full module-by-module breakdown, see [`TECHNICAL.md`](TECHNICAL.md).
 
 ## Current progress
 
-- ✅ Workflow DSL (`use Synapse.Workflow`, `step/3`, `commit/0`)
-- ✅ In-memory runtime with supervised `Synapse.Runner` processes
+- ✅ Workflow DSL (`use Synaptic.Workflow`, `step/3`, `commit/0`)
+- ✅ In-memory runtime with supervised `Synaptic.Runner` processes
 - ✅ Suspension + resume API for human involvement
 - ✅ LLM abstraction with an OpenAI adapter (extensible later)
 - ✅ Test suite covering DSL compilation + runtime execution
 - 🔜 Persisted state, UI, distributed execution (future phases)
 
-## Using Synapse locally
+## Using Synaptic locally
 
 1. Install deps: `mix deps.get`
 2. Provide OpenAI credentials (see below)
@@ -21,7 +21,7 @@ If you want the full module-by-module breakdown, see [`TECHNICAL.md`](TECHNICAL.
 
 ### Configuring OpenAI credentials
 
-Synapse defaults to the `Synapse.Tools.OpenAI` adapter. Supply an API key in
+Synaptic defaults to the `Synaptic.Tools.OpenAI` adapter. Supply an API key in
 one of two ways:
 
 1. **Environment variable** (recommended for dev):
@@ -34,32 +34,32 @@ one of two ways:
    `config/dev.exs`/`config/runtime.exs` add:
 
    ```elixir
-   config :synapse, Synapse.Tools.OpenAI,
+   config :synaptic, Synaptic.Tools.OpenAI,
      api_key: System.fetch_env!("OPENAI_API_KEY"),
      model: "gpt-4o-mini" # or whichever you prefer
    ```
 
-You can also swap adapters by configuring `Synapse.Tools`:
+You can also swap adapters by configuring `Synaptic.Tools`:
 
 ```elixir
-config :synapse, Synapse.Tools, llm_adapter: MyCustomAdapter
+config :synaptic, Synaptic.Tools, llm_adapter: MyCustomAdapter
 ```
 
 ### Configuring agents with custom models
 
 You can define named agents whose model/adapter configuration differs from the
-global defaults. Provide agent entries under `Synapse.Tools` and reference
+global defaults. Provide agent entries under `Synaptic.Tools` and reference
 them via the `agent:` option when calling the tools module:
 
 ```elixir
-config :synapse, Synapse.Tools,
-  llm_adapter: Synapse.Tools.OpenAI,
+config :synaptic, Synaptic.Tools,
+  llm_adapter: Synaptic.Tools.OpenAI,
   agents: [
     researcher: [model: "gpt-4o-mini"],
     builder: [model: "o4-mini", temperature: 0.1]
   ]
 
-Synapse.Tools.chat([
+Synaptic.Tools.chat([
   %{role: "system", content: "You are a helpful researcher"},
   %{role: "user", content: "Summarize the doc"}
 ], agent: :researcher)
@@ -71,23 +71,23 @@ provider altogether.
 
 ### Tool calling
 
-Synapse exposes a thin wrapper around OpenAI-style tool calling. Define one or
-more `%Synapse.Tools.Tool{}` structs (or pass a map/keyword with `:name`,
+Synaptic exposes a thin wrapper around OpenAI-style tool calling. Define one or
+more `%Synaptic.Tools.Tool{}` structs (or pass a map/keyword with `:name`,
 `:description`, `:schema`, and a one-arity `:handler`), then pass them via the
 `tools:` option:
 
 ```elixir
-tool = %Synapse.Tools.Tool{
+tool = %Synaptic.Tools.Tool{
   name: "lookup",
   description: "Looks up docs",
   schema: %{type: "object", properties: %{topic: %{type: "string"}}, required: ["topic"]},
   handler: fn %{"topic" => topic} -> Docs.search(topic) end
 }
 
-{:ok, response} = Synapse.Tools.chat(messages, tools: [tool])
+{:ok, response} = Synaptic.Tools.chat(messages, tools: [tool])
 ```
 
-When the LLM requests a tool (via `function_call`/`tool_calls`), Synapse invokes
+When the LLM requests a tool (via `function_call`/`tool_calls`), Synaptic invokes
 the handler, appends the tool response to the conversation, and re-issues the
 chat request until the model produces a final assistant message.
 
@@ -95,7 +95,7 @@ chat request until the model produces a final assistant message.
 
 ```elixir
 defmodule ExampleFlow do
-  use Synapse.Workflow
+  use Synaptic.Workflow
 
   step :greet do
     {:ok, %{message: "Hello"}}
@@ -112,8 +112,8 @@ defmodule ExampleFlow do
   commit()
 end
 
-{:ok, run_id} = Synapse.start(ExampleFlow, %{})
-Synapse.resume(run_id, %{approved: true})
+{:ok, run_id} = Synaptic.start(ExampleFlow, %{})
+Synaptic.resume(run_id, %{approved: true})
 ```
 
 ### Stopping a run
@@ -122,16 +122,16 @@ To cancel a workflow early (for example, if a human rejected it out-of-band),
 call:
 
 ```elixir
-Synapse.stop(run_id, :user_cancelled)
+Synaptic.stop(run_id, :user_cancelled)
 ```
 
 The optional second argument becomes the `:reason` in the PubSub event and
-history entry. `Synapse.stop/2` returns `:ok` if the run was alive and
+history entry. `Synaptic.stop/2` returns `:ok` if the run was alive and
 `{:error, :not_found}` otherwise.
 
 ### Dev-only demo workflow
 
-When running with `MIX_ENV=dev`, the module `Synapse.Dev.DemoWorkflow` is loaded
+When running with `MIX_ENV=dev`, the module `Synaptic.Dev.DemoWorkflow` is loaded
 so you can exercise the engine end-to-end without writing your own flow yet. In
 one terminal start an IEx shell:
 
@@ -142,12 +142,12 @@ MIX_ENV=dev iex -S mix
 Then kick off the sample workflow:
 
 ```elixir
-{:ok, run_id} = Synapse.start(Synapse.Dev.DemoWorkflow, %{topic: "Intro to GenServers"})
-Synapse.inspect(run_id)
+{:ok, run_id} = Synaptic.start(Synaptic.Dev.DemoWorkflow, %{topic: "Intro to GenServers"})
+Synaptic.inspect(run_id)
 # => prompts you (twice) for learner info before producing an outline
 
-Synapse.resume(run_id, %{approved: true})
-Synapse.history(run_id)
+Synaptic.resume(run_id, %{approved: true})
+Synaptic.history(run_id)
 ```
 
 The demo first asks the LLM to suggest 2–3 clarifying questions, then loops
@@ -157,19 +157,19 @@ plan so you can still practice the suspend/resume loop.
 
 ### Observing runs via PubSub
 
-Subscribe to a run to receive lifecycle events from `Synapse.PubSub`:
+Subscribe to a run to receive lifecycle events from `Synaptic.PubSub`:
 
 ```elixir
-:ok = Synapse.subscribe(run_id)
+:ok = Synaptic.subscribe(run_id)
 
 receive do
-  {:synapse_event, %{event: :waiting_for_human, message: msg}} -> IO.puts("Waiting: #{msg}")
-  {:synapse_event, %{event: :step_completed, step: step}} -> IO.puts("Finished #{step}")
+  {:synaptic_event, %{event: :waiting_for_human, message: msg}} -> IO.puts("Waiting: #{msg}")
+  {:synaptic_event, %{event: :step_completed, step: step}} -> IO.puts("Finished #{step}")
 after
   5_000 -> IO.puts("no events yet")
 end
 
-Synapse.unsubscribe(run_id)
+Synaptic.unsubscribe(run_id)
 ```
 
 Events include `:waiting_for_human`, `:resumed`, `:step_completed`, `:retrying`,
@@ -179,7 +179,7 @@ the UI state they represent.
 
 ### Running tests
 
-Synapse has dedicated tests under `test/synapse`. Run them with:
+Synaptic has dedicated tests under `test/synaptic`. Run them with:
 
 ```bash
 mix test

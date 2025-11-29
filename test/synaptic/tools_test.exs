@@ -1,4 +1,4 @@
-defmodule Synapse.ToolsTest do
+defmodule Synaptic.ToolsTest do
   use ExUnit.Case
 
   defmodule PrimaryAdapter do
@@ -38,9 +38,9 @@ defmodule Synapse.ToolsTest do
   @messages [%{role: "user", content: "ping"}]
 
   setup do
-    original = Application.get_env(:synapse, Synapse.Tools)
+    original = Application.get_env(:synaptic, Synaptic.Tools)
 
-    Application.put_env(:synapse, Synapse.Tools,
+    Application.put_env(:synaptic, Synaptic.Tools,
       llm_adapter: __MODULE__.PrimaryAdapter,
       agents: [
         engineer: [model: "o4-mini", temperature: 0.2],
@@ -50,9 +50,9 @@ defmodule Synapse.ToolsTest do
 
     on_exit(fn ->
       if original do
-        Application.put_env(:synapse, Synapse.Tools, original)
+        Application.put_env(:synaptic, Synaptic.Tools, original)
       else
-        Application.delete_env(:synapse, Synapse.Tools)
+        Application.delete_env(:synaptic, Synaptic.Tools)
       end
     end)
 
@@ -60,31 +60,31 @@ defmodule Synapse.ToolsTest do
   end
 
   test "applies agent defaults" do
-    assert {:ok, {:primary, opts}} = Synapse.Tools.chat(@messages, agent: :engineer)
+    assert {:ok, {:primary, opts}} = Synaptic.Tools.chat(@messages, agent: :engineer)
     assert opts[:model] == "o4-mini"
     assert opts[:temperature] == 0.2
   end
 
   test "allows explicit overrides" do
     assert {:ok, {:primary, opts}} =
-             Synapse.Tools.chat(@messages, agent: :engineer, temperature: 0.5)
+             Synaptic.Tools.chat(@messages, agent: :engineer, temperature: 0.5)
 
     assert opts[:temperature] == 0.5
   end
 
   test "uses adapter overrides configured on agent" do
-    assert {:ok, {:secondary, opts}} = Synapse.Tools.chat(@messages, agent: :translator)
+    assert {:ok, {:secondary, opts}} = Synaptic.Tools.chat(@messages, agent: :translator)
     assert opts[:model] == "gpt-4o-mini"
   end
 
   test "raises when agent is missing" do
-    assert_raise ArgumentError, ~r/unknown Synapse agent/, fn ->
-      Synapse.Tools.chat(@messages, agent: :missing)
+    assert_raise ArgumentError, ~r/unknown Synaptic agent/, fn ->
+      Synaptic.Tools.chat(@messages, agent: :missing)
     end
   end
 
   test "executes tools when adapter requests tool calls" do
-    tool = %Synapse.Tools.Tool{
+    tool = %Synaptic.Tools.Tool{
       name: "echo",
       description: "echoes text",
       schema: %{
@@ -101,7 +101,7 @@ defmodule Synapse.ToolsTest do
     Process.delete({ToolAdapter, :stage})
 
     assert {:ok, "final"} =
-             Synapse.Tools.chat(@messages,
+             Synaptic.Tools.chat(@messages,
                adapter: ToolAdapter,
                tools: [tool]
              )

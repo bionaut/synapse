@@ -1,8 +1,8 @@
-defmodule Synapse.DSLTest do
+defmodule Synaptic.DSLTest do
   use ExUnit.Case, async: true
 
   defmodule ExampleWorkflow do
-    use Synapse.Workflow
+    use Synaptic.Workflow
 
     step :greet, input: %{name: :string}, output: %{greeting: :string} do
       name = Map.get(context, :name, "world")
@@ -22,7 +22,7 @@ defmodule Synapse.DSLTest do
   end
 
   test "workflow definition includes ordered step metadata" do
-    definition = Synapse.workflow_definition(ExampleWorkflow)
+    definition = Synaptic.workflow_definition(ExampleWorkflow)
 
     assert definition.module == ExampleWorkflow
     assert Enum.map(definition.steps, & &1.name) == [:greet, :review, :finalize]
@@ -31,6 +31,6 @@ defmodule Synapse.DSLTest do
 
   test "suspend_for_human helper formats payload" do
     assert {:suspend, %{message: "Need help", metadata: %{}}} =
-             Synapse.Workflow.suspend_for_human("Need help")
+             Synaptic.Workflow.suspend_for_human("Need help")
   end
 end

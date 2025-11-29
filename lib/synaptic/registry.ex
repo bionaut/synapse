@@ -1,5 +1,7 @@
-defmodule Synapse.Registry do
-  @moduledoc false
+defmodule Synaptic.Registry do
+  @moduledoc """
+  Registry used to name runner processes by run id and enumerate active runs.
+  """
 
   def child_spec(_opts) do
     Registry.child_spec(keys: :unique, name: __MODULE__)

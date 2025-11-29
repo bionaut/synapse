@@ -1,19 +1,19 @@
-defmodule Synapse.Tools do
+defmodule Synaptic.Tools do
   @moduledoc """
   Helper utilities for invoking LLM providers from workflow steps.
   """
 
-  alias Synapse.Tools.Tool
+  alias Synaptic.Tools.Tool
 
-  @default_adapter Synapse.Tools.OpenAI
+  @default_adapter Synaptic.Tools.OpenAI
 
   @doc """
   Dispatches a chat completion request to the configured adapter.
 
   Pass `agent: :name` to pull default options (model, temperature, adapter,
   etc.) from the `:agents` configuration. Provide `tools: [...]` with
-  `%Synapse.Tools.Tool{}` structs (or maps/keywords convertible via
-  `Synapse.Tools.Tool.new/1`) to enable tool-calling flows.
+  `%Synaptic.Tools.Tool{}` structs (or maps/keywords convertible via
+  `Synaptic.Tools.Tool.new/1`) to enable tool-calling flows.
   """
   def chat(messages, opts \\ []) when is_list(messages) do
     {agent_opts, call_opts} = agent_options(opts)
@@ -73,18 +73,18 @@ defmodule Synapse.Tools do
 
     case Map.fetch(agents, key) do
       {:ok, opts} -> opts
-      :error -> raise ArgumentError, "unknown Synapse agent #{inspect(name)}"
+      :error -> raise ArgumentError, "unknown Synaptic agent #{inspect(name)}"
     end
   end
 
   defp configured_agents do
-    Application.get_env(:synapse, __MODULE__, [])
+    Application.get_env(:synaptic, __MODULE__, [])
     |> Keyword.get(:agents, %{})
     |> normalize_agents()
   end
 
   defp configured_adapter do
-    Application.get_env(:synapse, __MODULE__, [])
+    Application.get_env(:synaptic, __MODULE__, [])
     |> Keyword.get(:llm_adapter, @default_adapter)
   end
 
@@ -128,7 +128,7 @@ defmodule Synapse.Tools do
     raise ArgumentError, "agent names must be atoms or strings, got: #{inspect(name)}"
   end
 
-  alias Synapse.Tools.Tool
+  alias Synaptic.Tools.Tool
 
   defp normalize_tools([]), do: []
 
