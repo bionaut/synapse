@@ -61,7 +61,7 @@ Phoenix app and where to look when extending it.
    and generates hidden functions (`__synapse_handle__/2` and
    `__synapse_definition__/0`). Nothing is executed yet—you just defined the
    blueprint.
-2. **The app boots.** When you run `iex -S mix` or `mix phx.server`,
+2. **The app boots.** When you run `iex -S mix`,
    `Synapse.Application` spins up the supervision tree (Registry +
    RuntimeSupervisor). They sit idle waiting for workflow runs.
 3. **You start a run** (e.g., `Synapse.start(MyWorkflow, %{foo: :bar})`). The

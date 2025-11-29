@@ -1,6 +1,6 @@
 # Synapse
 
-This Phoenix app now hosts **Synapse**, a database-free workflow engine for
+This repository hosts **Synapse**, a database-free workflow engine for
 LLM-assisted automations with human-in-the-loop support (Phase 1 of the spec).
 If you want the full module-by-module breakdown, see [`TECHNICAL.md`](TECHNICAL.md).
 
@@ -15,9 +15,9 @@ If you want the full module-by-module breakdown, see [`TECHNICAL.md`](TECHNICAL.
 
 ## Using Synapse locally
 
-1. Install deps: `mix setup`
+1. Install deps: `mix deps.get`
 2. Provide OpenAI credentials (see below)
-3. Start the endpoint if you need the Phoenix app running: `mix phx.server`
+3. Start an interactive shell when you want to run workflows locally: `iex -S mix`
 
 ### Configuring OpenAI credentials
 
@@ -172,12 +172,3 @@ mix test
 2. Build basic UI/endpoints for human approvals + observability
 3. Introduce additional adapters (Anthropic, local models, tooling APIs)
 4. Explore distributed execution + versioning (Phase 2 roadmap)
-
-## Original Phoenix quickstart
-
-The app still behaves like a standard Phoenix project:
-
-- `mix setup` – install deps
-- `mix phx.server` – start server (`localhost:4000`)
-
-For deployment tips, read the [Phoenix guides](https://hexdocs.pm/phoenix/deployment.html).
