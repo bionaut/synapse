@@ -3,22 +3,56 @@ defmodule Synapse.Tools do
   Helper utilities for invoking LLM providers from workflow steps.
   """
 
+  alias Synapse.Tools.Tool
+
   @default_adapter Synapse.Tools.OpenAI
 
   @doc """
   Dispatches a chat completion request to the configured adapter.
 
   Pass `agent: :name` to pull default options (model, temperature, adapter,
-  etc.) from the `:agents` configuration. Any explicit options provided at
-  call time override the agent defaults.
+  etc.) from the `:agents` configuration. Provide `tools: [...]` with
+  `%Synapse.Tools.Tool{}` structs (or maps/keywords convertible via
+  `Synapse.Tools.Tool.new/1`) to enable tool-calling flows.
   """
   def chat(messages, opts \\ []) when is_list(messages) do
     {agent_opts, call_opts} = agent_options(opts)
-
     merged_opts = Keyword.merge(agent_opts, call_opts)
+
+    {tools, merged_opts} = Keyword.pop(merged_opts, :tools, [])
+    tool_specs = normalize_tools(tools)
+
     adapter = Keyword.get(merged_opts, :adapter, configured_adapter())
 
-    adapter.chat(messages, merged_opts)
+    adapter_opts =
+      if tool_specs == [] do
+        merged_opts
+      else
+        Keyword.put(merged_opts, :tools, Enum.map(tool_specs, &Tool.to_openai/1))
+      end
+
+    do_chat(adapter, messages, adapter_opts, tool_specs)
+  end
+
+  defp do_chat(adapter, messages, opts, []), do: adapter.chat(messages, opts)
+
+  defp do_chat(adapter, messages, opts, tools) do
+    tool_map = Map.new(tools, &{&1.name, &1})
+
+    case adapter.chat(messages, opts) do
+      {:ok, %{tool_calls: tool_calls} = message} when is_list(tool_calls) and tool_calls != [] ->
+        new_messages = apply_tool_calls(messages, message, tool_map)
+        do_chat(adapter, new_messages, opts, tools)
+
+      {:ok, %{"tool_calls" => tool_calls} = message}
+      when is_list(tool_calls) and
+             tool_calls != [] ->
+        new_messages = apply_tool_calls(messages, message, tool_map)
+        do_chat(adapter, new_messages, opts, tools)
+
+      other ->
+        other
+    end
   end
 
   defp agent_options(opts) do
@@ -93,4 +127,53 @@ defmodule Synapse.Tools do
   defp agent_key(name) do
     raise ArgumentError, "agent names must be atoms or strings, got: #{inspect(name)}"
   end
+
+  alias Synapse.Tools.Tool
+
+  defp normalize_tools([]), do: []
+
+  defp normalize_tools(tools) when is_list(tools) do
+    Enum.map(tools, &Tool.new/1)
+  end
+
+  defp normalize_tools(tool), do: [Tool.new(tool)]
+
+  defp apply_tool_calls(messages, message, tool_map) do
+    assistant_msg = %{
+      role: "assistant",
+      content: Map.get(message, :content) || Map.get(message, "content"),
+      tool_calls: Map.get(message, :tool_calls) || Map.get(message, "tool_calls")
+    }
+
+    tool_messages =
+      assistant_msg.tool_calls
+      |> Enum.map(&execute_tool_call(&1, tool_map))
+
+    messages ++ [assistant_msg | tool_messages]
+  end
+
+  defp execute_tool_call(call, tool_map) do
+    %{"function" => %{"name" => name, "arguments" => raw_args}, "id" => id} = call
+
+    tool =
+      Map.fetch!(tool_map, name)
+
+    args =
+      case Jason.decode(raw_args) do
+        {:ok, decoded} -> decoded
+        _ -> %{}
+      end
+
+    result = tool.handler.(args)
+
+    %{
+      role: "tool",
+      tool_call_id: id,
+      name: name,
+      content: encode_tool_result(result)
+    }
+  end
+
+  defp encode_tool_result(result) when is_binary(result), do: result
+  defp encode_tool_result(result), do: Jason.encode!(result)
 end

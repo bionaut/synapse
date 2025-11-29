@@ -9,11 +9,13 @@ defmodule Synapse.Tools.OpenAI do
   Sends a chat completion request.
   """
   def chat(messages, opts \\ []) do
-    body = %{
-      model: model(opts),
-      messages: messages,
-      temperature: Keyword.get(opts, :temperature, 0)
-    }
+    body =
+      %{
+        model: model(opts),
+        messages: messages,
+        temperature: Keyword.get(opts, :temperature, 0)
+      }
+      |> maybe_put_tools(opts)
 
     headers =
       [
@@ -40,6 +42,14 @@ defmodule Synapse.Tools.OpenAI do
     opts[:model] || config(opts)[:model] || "gpt-4o-mini"
   end
 
+  defp maybe_put_tools(body, opts) do
+    case Keyword.get(opts, :tools) do
+      nil -> body
+      [] -> body
+      tools -> Map.merge(body, %{tools: tools, tool_choice: "auto"})
+    end
+  end
+
   defp endpoint(opts), do: opts[:endpoint] || config(opts)[:endpoint] || @endpoint
 
   defp api_key(opts) do
@@ -56,12 +66,21 @@ defmodule Synapse.Tools.OpenAI do
   defp parse_response(body) do
     with {:ok, decoded} <- Jason.decode(body),
          [choice | _] <- Map.get(decoded, "choices", []),
-         %{"message" => %{"content" => content}} <- choice do
-      {:ok, content}
+         %{"message" => %{"content" => content} = message} <- choice do
+      tool_calls = tool_calls_from(message)
+
+      if tool_calls == [] do
+        {:ok, content}
+      else
+        {:ok, %{content: content, tool_calls: tool_calls}}
+      end
     else
       _ -> {:error, :invalid_response}
     end
   end
+
+  defp tool_calls_from(%{"tool_calls" => calls}) when is_list(calls), do: calls
+  defp tool_calls_from(_), do: []
 
   defp safe_decode(body) do
     case Jason.decode(body) do

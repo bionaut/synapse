@@ -94,7 +94,10 @@ and available, the runtime can execute it via `Synapse.start/3`.
   - Named agents can override model/temperature/adapter per workflow via the
     `agent: :name` option.
   - `Synapse.Tools.chat/2` merges options, picks the adapter, and delegates to
-    `adapter.chat/2`.
+    `adapter.chat/2`. Pass `tools: [...]` with `%Synapse.Tools.Tool{}` structs to
+    enable OpenAI-style tool calling; the helper will execute the tool handlers
+    whenever the model emits `tool_calls` and continue the conversation until a
+    final assistant response is produced.
 - `Synapse.Tools.OpenAI` is the default adapter. It builds a Finch request with a
   JSON body, sends it via `Synapse.Finch`, and returns either `{:ok, content}` or
   `{:error, reason}`. Lack of an API key raises so misconfiguration fails fast.

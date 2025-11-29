@@ -129,7 +129,7 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
           role: "user",
           content:
             "Topic: #{topic}. Suggest 2-3 short questions (one per line) that help tailor" <>
-              " educational materials."
+              " educational materials. Make sure to call learning_resources tool."
         }
       ]
 
@@ -214,8 +214,24 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
     end
 
     defp safe_chat(messages) do
+      tool = %Synapse.Tools.Tool{
+        name: "learning_resources",
+        description: "Returns a short list of resources for a topic.",
+        schema: %{
+          type: "object",
+          properties: %{topic: %{type: "string"}},
+          required: ["topic"]
+        },
+        handler: fn %{"topic" => topic} ->
+          Logger.info("Looking up resources for topic: #{topic}")
+
+          # Just return an empty list for now
+          []
+        end
+      }
+
       try do
-        Synapse.Tools.chat(messages)
+        Synapse.Tools.chat(messages, tools: [tool])
       rescue
         error -> {:error, {:exception, error}}
       end

@@ -9,6 +9,32 @@ defmodule Synapse.ToolsTest do
     def chat(_messages, opts), do: {:ok, {:secondary, opts}}
   end
 
+  defmodule ToolAdapter do
+    def chat(_messages, _opts) do
+      case Process.get({__MODULE__, :stage}, :first) do
+        :first ->
+          Process.put({__MODULE__, :stage}, :second)
+
+          {:ok,
+           %{
+             "content" => nil,
+             "tool_calls" => [
+               %{
+                 "id" => "call_1",
+                 "function" => %{
+                   "name" => "echo",
+                   "arguments" => ~s<{"text":"hi"}>
+                 }
+               }
+             ]
+           }}
+
+        :second ->
+          {:ok, "final"}
+      end
+    end
+  end
+
   @messages [%{role: "user", content: "ping"}]
 
   setup do
@@ -55,5 +81,31 @@ defmodule Synapse.ToolsTest do
     assert_raise ArgumentError, ~r/unknown Synapse agent/, fn ->
       Synapse.Tools.chat(@messages, agent: :missing)
     end
+  end
+
+  test "executes tools when adapter requests tool calls" do
+    tool = %Synapse.Tools.Tool{
+      name: "echo",
+      description: "echoes text",
+      schema: %{
+        type: "object",
+        properties: %{text: %{type: "string"}},
+        required: ["text"]
+      },
+      handler: fn %{"text" => text} ->
+        Process.put(:tool_called, text)
+        %{reply: text <> "!"}
+      end
+    }
+
+    Process.delete({ToolAdapter, :stage})
+
+    assert {:ok, "final"} =
+             Synapse.Tools.chat(@messages,
+               adapter: ToolAdapter,
+               tools: [tool]
+             )
+
+    assert Process.get(:tool_called) == "hi"
   end
 end

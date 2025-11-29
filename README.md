@@ -69,6 +69,28 @@ Agent options are merged with any explicit opts passed to `chat/2`. You can also
 specify `adapter:` inside an agent definition if some agents need a different
 provider altogether.
 
+### Tool calling
+
+Synapse exposes a thin wrapper around OpenAI-style tool calling. Define one or
+more `%Synapse.Tools.Tool{}` structs (or pass a map/keyword with `:name`,
+`:description`, `:schema`, and a one-arity `:handler`), then pass them via the
+`tools:` option:
+
+```elixir
+tool = %Synapse.Tools.Tool{
+  name: "lookup",
+  description: "Looks up docs",
+  schema: %{type: "object", properties: %{topic: %{type: "string"}}, required: ["topic"]},
+  handler: fn %{"topic" => topic} -> Docs.search(topic) end
+}
+
+{:ok, response} = Synapse.Tools.chat(messages, tools: [tool])
+```
+
+When the LLM requests a tool (via `function_call`/`tool_calls`), Synapse invokes
+the handler, appends the tool response to the conversation, and re-issues the
+chat request until the model produces a final assistant message.
+
 ### Writing workflows
 
 ```elixir
