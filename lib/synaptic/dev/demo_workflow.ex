@@ -133,7 +133,8 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
         }
       ]
 
-      case safe_chat(messages) do
+      # Use streaming for question generation
+      case safe_chat(messages, stream: true) do
         {:ok, raw} ->
           questions = parse_questions(raw)
 
@@ -199,7 +200,12 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
         }
       ]
 
-      safe_chat(messages)
+      # Use streaming for learning plan generation (without tools for true streaming)
+      try do
+        Synaptic.Tools.chat(messages, stream: true)
+      rescue
+        error -> {:error, {:exception, error}}
+      end
     end
 
     defp serialize_answers(%{} = answers) do
@@ -213,7 +219,7 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
       end
     end
 
-    defp safe_chat(messages) do
+    defp safe_chat(messages, opts) do
       tool = %Synaptic.Tools.Tool{
         name: "learning_resources",
         description: "Returns a short list of resources for a topic.",
@@ -231,7 +237,9 @@ if Code.ensure_loaded?(Mix) and Mix.env() == :dev do
       }
 
       try do
-        Synaptic.Tools.chat(messages, tools: [tool])
+        # Note: When tools are provided and stream: true, it automatically falls back to non-streaming
+        # This is an OpenAI limitation - streaming doesn't support tool calling
+        Synaptic.Tools.chat(messages, Keyword.merge(opts, tools: [tool]))
       rescue
         error -> {:error, {:exception, error}}
       end

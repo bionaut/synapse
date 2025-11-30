@@ -144,6 +144,66 @@ If the model returns invalid JSON while JSON mode is enabled, the call fails
 with `{:error, :invalid_json_response}` so workflows can retry or surface the
 failure.
 
+### Streaming responses
+
+Synaptic supports streaming LLM responses for real-time content delivery. When
+`stream: true` is passed to `Synaptic.Tools.chat/2`, the response is streamed
+and PubSub events are emitted for each chunk:
+
+```elixir
+step :generate do
+  messages = [%{role: "user", content: "Write a story"}]
+
+  case Synaptic.Tools.chat(messages, stream: true) do
+    {:ok, full_content} ->
+      # Full content is available after streaming completes
+      {:ok, %{story: full_content}}
+
+    {:error, reason} ->
+      {:error, reason}
+  end
+end
+```
+
+**Subscribing to stream events:**
+
+```elixir
+{:ok, run_id} = Synaptic.start(MyWorkflow, %{})
+:ok = Synaptic.subscribe(run_id)
+
+# Receive stream chunks in real-time
+receive do
+  {:synaptic_event, %{event: :stream_chunk, chunk: chunk, accumulated: accumulated}} ->
+    IO.puts("New chunk: #{chunk}")
+    IO.puts("So far: #{accumulated}")
+
+  {:synaptic_event, %{event: :stream_done, accumulated: full_content}} ->
+    IO.puts("Stream complete: #{full_content}")
+end
+```
+
+**Stream event structure:**
+
+- `:stream_chunk` - Emitted for each content chunk:
+
+  - `chunk` - The new chunk of text
+  - `accumulated` - All content received so far
+  - `step` - The step name
+  - `run_id` - The workflow run ID
+
+- `:stream_done` - Emitted when streaming completes:
+  - `accumulated` - The complete response
+  - `step` - The step name
+  - `run_id` - The workflow run ID
+
+**Important limitations:**
+
+- Streaming automatically falls back to non-streaming mode when tools are
+  provided, as OpenAI's streaming API doesn't support tool calling
+- Streaming doesn't support `response_format` options (JSON mode)
+- The step function still receives the complete accumulated content when
+  streaming finishes
+
 ### Writing workflows
 
 ```elixir
@@ -325,6 +385,222 @@ Events include `:waiting_for_human`, `:resumed`, `:step_completed`, `:retrying`,
 `:step_error`, `:failed`, `:stopped`, and `:completed`. Each payload also
 contains `:run_id` and `:current_step`, so LiveView processes can map events to
 the UI state they represent.
+
+### Testing streaming in IEx
+
+The demo workflow now supports streaming in the `:generate_learning_plan` step. Here are IEx commands to test streaming functionality:
+
+**Basic streaming test:**
+
+```elixir
+# Start the workflow with a topic
+{:ok, run_id} = Synaptic.start(Synaptic.Dev.DemoWorkflow, %{topic: "Elixir Concurrency"})
+
+# Subscribe to events
+:ok = Synaptic.subscribe(run_id)
+
+# Answer the questions (if prompted)
+Synaptic.inspect(run_id)
+# If waiting, resume with answers:
+Synaptic.resume(run_id, %{answer: "I know basic Elixir"})
+Synaptic.resume(run_id, %{answer: "Build distributed systems"})
+
+# Watch for streaming events
+receive do
+  {:synaptic_event, %{event: :stream_chunk, chunk: chunk, accumulated: acc, step: step}} ->
+    IO.puts("[#{step}] Chunk: #{chunk}")
+    IO.puts("[#{step}] Accumulated: #{acc}")
+    # Continue listening...
+after
+  10_000 -> IO.puts("No stream events received")
+end
+```
+
+**Complete streaming workflow with event loop:**
+
+```elixir
+# Start workflow and subscribe
+{:ok, run_id} = Synaptic.start(Synaptic.Dev.DemoWorkflow, %{topic: "Phoenix LiveView"})
+:ok = Synaptic.subscribe(run_id)
+
+# Helper function to listen for all events
+listen_for_events = fn ->
+  receive do
+    {:synaptic_event, %{event: :stream_chunk, chunk: chunk, step: step}} ->
+      IO.write(chunk)
+      listen_for_events.()
+
+    {:synaptic_event, %{event: :stream_done, accumulated: full, step: step}} ->
+      IO.puts("\n\n[#{step}] Stream complete!")
+      IO.puts("Full content:\n#{full}")
+
+    {:synaptic_event, %{event: :waiting_for_human, message: msg, step: step}} ->
+      IO.puts("\n[#{step}] Waiting: #{msg}")
+      snapshot = Synaptic.inspect(run_id)
+      IO.inspect(snapshot.waiting, label: "Waiting details")
+
+    {:synaptic_event, %{event: :step_completed, step: step}} ->
+      IO.puts("\n[#{step}] Step completed")
+
+    {:synaptic_event, %{event: :completed}} ->
+      IO.puts("\n✓ Workflow completed!")
+      snapshot = Synaptic.inspect(run_id)
+      IO.inspect(snapshot.context, label: "Final context")
+
+    other ->
+      IO.inspect(other, label: "Other event")
+      listen_for_events.()
+  after
+    30_000 ->
+      IO.puts("\nTimeout waiting for events")
+      snapshot = Synaptic.inspect(run_id)
+      IO.inspect(snapshot, label: "Current state")
+  end
+end
+
+# Start listening
+listen_for_events.()
+```
+
+**Skip to streaming step directly:**
+
+```elixir
+# Start at the streaming step with pre-answered questions
+context = %{
+  topic: "Elixir Pattern Matching",
+  clarification_answers: %{
+    "q_background" => "Beginner",
+    "q_goal" => "Write cleaner code"
+  },
+  pending_questions: [],
+  current_question: nil,
+  question_source: :fallback
+}
+
+{:ok, run_id} = Synaptic.start(
+  Synaptic.Dev.DemoWorkflow,
+  context,
+  start_at_step: :generate_learning_plan
+)
+
+:ok = Synaptic.subscribe(run_id)
+
+# Watch the stream in real-time
+Stream.repeatedly(fn ->
+  receive do
+    {:synaptic_event, %{event: :stream_chunk, chunk: chunk}} ->
+      IO.write(chunk)
+      :continue
+
+    {:synaptic_event, %{event: :stream_done}} ->
+      IO.puts("\n\n✓ Streaming complete!")
+      :done
+
+    other ->
+      :continue
+  after
+    5_000 -> :timeout
+  end
+end)
+|> Enum.take_while(&(&1 != :done))
+```
+
+**Monitor all events with a simple loop:**
+
+```elixir
+{:ok, run_id} = Synaptic.start(Synaptic.Dev.DemoWorkflow, %{topic: "OTP Behaviours"})
+:ok = Synaptic.subscribe(run_id)
+
+# Simple event monitor
+monitor = fn ->
+  case receive do
+    {:synaptic_event, %{event: :stream_chunk, chunk: chunk}} ->
+      IO.write(chunk)
+      monitor.()
+
+    {:synaptic_event, %{event: event} = payload} ->
+      IO.puts("\n[#{event}] #{inspect(payload, pretty: true)}")
+      monitor.()
+
+    :stop -> :ok
+  after
+    60_000 ->
+      IO.puts("\nMonitoring timeout")
+      :ok
+  end
+end
+
+# Run monitor in background or interactively
+monitor.()
+```
+
+**Check workflow status and view history:**
+
+```elixir
+# Check current status
+snapshot = Synaptic.inspect(run_id)
+IO.inspect(snapshot, label: "Workflow snapshot")
+
+# View execution history
+history = Synaptic.history(run_id)
+IO.inspect(history, label: "Execution history")
+
+# List all running workflows
+runs = Synaptic.list_runs()
+IO.inspect(runs, label: "Active runs")
+```
+
+**Clean up:**
+
+```elixir
+# Unsubscribe when done
+Synaptic.unsubscribe(run_id)
+
+# Or stop the workflow
+Synaptic.stop(run_id, :user_requested)
+```
+
+### Quick streaming test scripts
+
+Two test scripts are provided for easy testing of streaming functionality:
+
+**Simple version (recommended for quick tests):**
+
+```bash
+# Run with default topic
+MIX_ENV=dev mix run scripts/test_streaming_simple.exs
+
+# Run with custom topic
+MIX_ENV=dev mix run scripts/test_streaming_simple.exs "Phoenix LiveView"
+```
+
+This script skips directly to the streaming step and displays chunks as they arrive.
+
+**Full interactive version:**
+
+```bash
+# Run with default topic
+MIX_ENV=dev mix run scripts/test_streaming.exs
+
+# Run with custom topic
+MIX_ENV=dev mix run scripts/test_streaming.exs "Phoenix LiveView"
+```
+
+**Or load in IEx:**
+
+```elixir
+# In IEx session
+Code.require_file("scripts/test_streaming.exs")
+TestStreaming.run("Your Topic Here")
+```
+
+The interactive script will:
+
+- Let you choose between full workflow or skip to streaming step
+- Subscribe to PubSub events
+- Display streaming chunks in real-time as they arrive
+- Auto-resume workflow steps for demo purposes
+- Show final results and execution history
 
 ### Running tests
 

@@ -4,7 +4,7 @@ defmodule Synaptic.MixProject do
   def project do
     [
       app: :synaptic,
-      version: "0.1.3",
+      version: "0.1.4",
       elixir: "~> 1.14",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
@@ -26,7 +26,7 @@ defmodule Synaptic.MixProject do
   def application do
     [
       mod: {Synaptic.Application, []},
-      extra_applications: [:logger, :runtime_tools, :observer, :wx]
+      extra_applications: [:logger, :runtime_tools]
     ]
   end
 
@@ -42,7 +42,8 @@ defmodule Synaptic.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:finch, "~> 0.13"},
       {:jason, "~> 1.2"},
-      {:ex_doc, "~> 0.31", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:bypass, "~> 2.1", only: :test}
     ]
   end
 

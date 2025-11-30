@@ -7,8 +7,18 @@ defmodule Synaptic.Tools.OpenAI do
 
   @doc """
   Sends a chat completion request.
+
+  When `stream: true` is passed in opts, returns a streaming response.
   """
   def chat(messages, opts \\ []) do
+    if Keyword.get(opts, :stream, false) do
+      chat_stream(messages, opts)
+    else
+      chat_non_streaming(messages, opts)
+    end
+  end
+
+  defp chat_non_streaming(messages, opts) do
     response_format =
       opts
       |> response_format()
@@ -43,6 +53,118 @@ defmodule Synaptic.Tools.OpenAI do
         {:error, reason}
     end
   end
+
+  defp chat_stream(messages, opts) do
+    # Note: streaming doesn't support response_format or tools
+    body =
+      %{
+        model: model(opts),
+        messages: messages,
+        temperature: Keyword.get(opts, :temperature, 0),
+        stream: true
+      }
+
+    headers =
+      [
+        {"content-type", "application/json"},
+        {"authorization", "Bearer " <> api_key(opts)}
+      ]
+
+    request = Finch.build(:post, endpoint(opts), headers, Jason.encode!(body))
+    on_chunk = Keyword.get(opts, :on_chunk)
+
+    acc = %{buffer: "", accumulated: "", status: nil}
+
+    result =
+      Finch.stream(request, finch(opts), acc, fn
+        {:status, status}, acc ->
+          if status != 200 do
+            {:error, {:upstream_error, status, nil}, acc}
+          else
+            {:cont, %{acc | status: status}}
+          end
+
+        {:headers, _headers}, acc ->
+          {:cont, acc}
+
+        {:data, data}, acc ->
+          new_buffer = acc.buffer <> IO.iodata_to_binary(data)
+          {remaining_buffer, events, new_accumulated} = parse_sse_events(new_buffer, acc.accumulated)
+
+          # Call on_chunk callback for each event
+          if on_chunk do
+            Enum.each(events, fn {chunk, accumulated} ->
+              on_chunk.(chunk, accumulated)
+            end)
+          end
+
+          new_acc = %{buffer: remaining_buffer, accumulated: new_accumulated, status: acc.status}
+          {:cont, new_acc}
+
+        :done, acc ->
+          {:ok, acc.accumulated, acc}
+
+        {:error, reason}, _acc ->
+          {:error, reason}
+      end)
+
+    case result do
+      {:ok, accumulated, _acc} -> {:ok, accumulated}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp parse_sse_events(data, accumulated) do
+    # Split on double newline to get individual SSE events
+    parts = String.split(data, "\n\n", trim: false)
+
+    # Last part might be incomplete, keep it in buffer
+    {complete_parts, incomplete} =
+      if length(parts) > 1 do
+        {Enum.take(parts, length(parts) - 1), List.last(parts)}
+      else
+        {[], List.first(parts) || ""}
+      end
+
+    {events, new_accumulated} =
+      complete_parts
+      |> Enum.map(&parse_sse_chunk/1)
+      |> Enum.filter(&(&1 != nil))
+      |> Enum.reduce({[], accumulated}, fn chunk_data, {acc_events, acc_content} ->
+        case extract_delta_content(chunk_data) do
+          nil ->
+            {acc_events, acc_content}
+
+          content ->
+            new_accumulated = acc_content <> content
+            {[{content, new_accumulated} | acc_events], new_accumulated}
+        end
+      end)
+
+    {incomplete, Enum.reverse(events), new_accumulated}
+  end
+
+  defp parse_sse_chunk("data: [DONE]"), do: nil
+  defp parse_sse_chunk("data: " <> json) do
+    case Jason.decode(json) do
+      {:ok, decoded} -> decoded
+      _ -> nil
+    end
+  end
+
+  defp parse_sse_chunk(""), do: nil
+  defp parse_sse_chunk(_), do: nil
+
+  defp extract_delta_content(%{"choices" => [%{"delta" => %{"content" => content}} | _]})
+       when is_binary(content) do
+    content
+  end
+
+  defp extract_delta_content(%{"choices" => [%{"delta" => %{}} | _]}) do
+    nil
+  end
+
+  defp extract_delta_content(_), do: nil
 
   defp model(opts) do
     opts[:model] || config(opts)[:model] || "gpt-4o-mini"

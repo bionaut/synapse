@@ -14,6 +14,11 @@ defmodule Synaptic.Tools do
   etc.) from the `:agents` configuration. Provide `tools: [...]` with
   `%Synaptic.Tools.Tool{}` structs (or maps/keywords convertible via
   `Synaptic.Tools.Tool.new/1`) to enable tool-calling flows.
+
+  When `stream: true` is passed, the response will be streamed and PubSub events
+  will be emitted for each chunk. Note: streaming automatically falls back to
+  non-streaming mode when tools are provided, as OpenAI streaming doesn't support
+  tool calling.
   """
   def chat(messages, opts \\ []) when is_list(messages) do
     {agent_opts, call_opts} = agent_options(opts)
@@ -23,15 +28,32 @@ defmodule Synaptic.Tools do
     tool_specs = normalize_tools(tools)
 
     adapter = Keyword.get(merged_opts, :adapter, configured_adapter())
+    stream_enabled = Keyword.get(merged_opts, :stream, false)
 
-    adapter_opts =
-      if tool_specs == [] do
-        merged_opts
+    # If tools are provided and streaming is requested, fall back to non-streaming
+    if stream_enabled and tool_specs != [] do
+      require Logger
+      Logger.warning(
+        "Streaming requested but tools are provided. Falling back to non-streaming mode (OpenAI limitation)."
+      )
+
+      merged_opts = Keyword.delete(merged_opts, :stream)
+      adapter_opts = Keyword.put(merged_opts, :tools, Enum.map(tool_specs, &Tool.to_openai/1))
+      do_chat(adapter, messages, adapter_opts, tool_specs)
+    else
+      adapter_opts =
+        if tool_specs == [] do
+          merged_opts
+        else
+          Keyword.put(merged_opts, :tools, Enum.map(tool_specs, &Tool.to_openai/1))
+        end
+
+      if stream_enabled do
+        do_chat_stream(adapter, messages, adapter_opts)
       else
-        Keyword.put(merged_opts, :tools, Enum.map(tool_specs, &Tool.to_openai/1))
+        do_chat(adapter, messages, adapter_opts, tool_specs)
       end
-
-    do_chat(adapter, messages, adapter_opts, tool_specs)
+    end
   end
 
   defp do_chat(adapter, messages, opts, []), do: adapter.chat(messages, opts)
@@ -53,6 +75,75 @@ defmodule Synaptic.Tools do
       other ->
         other
     end
+  end
+
+  defp do_chat_stream(adapter, messages, opts) do
+    # Extract run_id and step_name from context (injected by Runner)
+    # These are passed via opts[:context] or can be extracted from a process dictionary
+    # For now, we'll get them from opts - they should be passed by the step
+    run_id = Keyword.get(opts, :run_id) || get_from_context(:__run_id__)
+    step_name = Keyword.get(opts, :step_name) || get_from_context(:__step_name__)
+
+    # Create on_chunk callback that publishes PubSub events
+    on_chunk = fn chunk, accumulated ->
+      publish_stream_chunk(run_id, step_name, chunk, accumulated)
+    end
+
+    adapter_opts = Keyword.put(opts, :on_chunk, on_chunk)
+
+    case adapter.chat(messages, adapter_opts) do
+      {:ok, accumulated} = result ->
+        # Publish stream_done event
+        if run_id do
+          publish_stream_done(run_id, step_name, accumulated)
+        end
+
+        result
+
+      error ->
+        error
+    end
+  end
+
+  # Helper to get values from process dictionary (set by Runner)
+  defp get_from_context(key) do
+    case Process.get({:synaptic_context, key}) do
+      nil -> nil
+      value -> value
+    end
+  end
+
+  defp publish_stream_chunk(nil, _step_name, _chunk, _accumulated), do: :ok
+
+  defp publish_stream_chunk(run_id, step_name, chunk, accumulated) do
+    alias Phoenix.PubSub
+
+    event = %{
+      event: :stream_chunk,
+      step: step_name,
+      chunk: chunk,
+      accumulated: accumulated,
+      run_id: run_id,
+      current_step: step_name
+    }
+
+    PubSub.broadcast(Synaptic.PubSub, "synaptic:run:" <> run_id, {:synaptic_event, event})
+  end
+
+  defp publish_stream_done(nil, _step_name, _accumulated), do: :ok
+
+  defp publish_stream_done(run_id, step_name, accumulated) do
+    alias Phoenix.PubSub
+
+    event = %{
+      event: :stream_done,
+      step: step_name,
+      accumulated: accumulated,
+      run_id: run_id,
+      current_step: step_name
+    }
+
+    PubSub.broadcast(Synaptic.PubSub, "synaptic:run:" <> run_id, {:synaptic_event, event})
   end
 
   defp agent_options(opts) do

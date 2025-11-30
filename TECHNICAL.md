@@ -111,6 +111,25 @@ and available, the runtime can execute it via `Synaptic.start/3`.
 - `Synaptic.Tools.OpenAI` is the default adapter. It builds a Finch request with a
   JSON body, sends it via `Synaptic.Finch`, and returns either `{:ok, content}` or
   `{:error, reason}`. Lack of an API key raises so misconfiguration fails fast.
+  When `stream: true` is passed, it uses `Finch.stream/4` to handle Server-Sent
+  Events (SSE) from OpenAI, parsing chunks and accumulating content. Streaming
+  automatically falls back to non-streaming when tools are provided.
+
+## Streaming implementation
+
+- **SSE parsing**: OpenAI streaming responses use Server-Sent Events format. Each
+  event is a line starting with `data: ` followed by JSON (or `[DONE]` to signal
+  completion). The adapter splits on `\n\n`, extracts JSON, and parses
+  `choices[0].delta.content` from each chunk.
+- **Content accumulation**: Chunks are accumulated incrementally. The `on_chunk`
+  callback receives both the new chunk and the accumulated content so far.
+- **PubSub integration**: `Synaptic.Tools` publishes `:stream_chunk` events for each
+  chunk and `:stream_done` when streaming completes. The Runner injects `run_id`
+  and `step_name` into the process dictionary so Tools can access them for event
+  publishing.
+- **Limitations**: Streaming doesn't support tool calling (auto fallback) or
+  `response_format` options. The step function still receives the complete
+  accumulated content when streaming finishes.
 
 ## Dev-only demo workflow
 

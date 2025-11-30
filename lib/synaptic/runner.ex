@@ -255,7 +255,19 @@ defmodule Synaptic.Runner do
   end
 
   defp invoke_step(step, state) do
-    Task.async(fn -> run_step_fun(step, state.workflow, state.context) end)
+    # Inject run_id and step_name into context for streaming support
+    enhanced_context =
+      state.context
+      |> Map.put(:__run_id__, state.run_id)
+      |> Map.put(:__step_name__, step.name)
+
+    Task.async(fn ->
+      # Set process dictionary for Tools module to access
+      Process.put({:synaptic_context, :__run_id__}, state.run_id)
+      Process.put({:synaptic_context, :__step_name__}, step.name)
+
+      run_step_fun(step, state.workflow, enhanced_context)
+    end)
     |> Task.await(:infinity)
   end
 
@@ -291,6 +303,8 @@ defmodule Synaptic.Runner do
   end
 
   defp run_parallel_tasks(tasks, context) when is_list(tasks) do
+    # Note: parallel tasks don't have access to run_id/step_name for streaming
+    # This is a limitation - parallel steps can't use streaming
     stream =
       Task.async_stream(tasks, &run_parallel_task(&1, context), timeout: :infinity, ordered: false)
 
@@ -445,11 +459,19 @@ defmodule Synaptic.Runner do
   defp launch_async_step(state, step) do
     parent = self()
     workflow = state.workflow
-    context = state.context
+    # Inject run_id and step_name into context for streaming support
+    enhanced_context =
+      state.context
+      |> Map.put(:__run_id__, state.run_id)
+      |> Map.put(:__step_name__, step.name)
 
     {:ok, pid} =
       Task.start(fn ->
-        result = run_step_fun(step, workflow, context)
+        # Set process dictionary for Tools module to access
+        Process.put({:synaptic_context, :__run_id__}, state.run_id)
+        Process.put({:synaptic_context, :__step_name__}, step.name)
+
+        result = run_step_fun(step, workflow, enhanced_context)
         send(parent, {:async_step_result, self(), result})
       end)
 
