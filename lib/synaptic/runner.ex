@@ -168,33 +168,36 @@ defmodule Synaptic.Runner do
     end
   end
 
+  defp execute_step(%Step{type: :parallel} = step, state) do
+    Logger.metadata(run_id: state.run_id, step: step.name)
+    Logger.debug("running parallel step #{step.name}")
+
+    case invoke_step(step, state) do
+      {:error, reason} ->
+        handle_step_error(step, reason, state)
+
+      tasks when is_list(tasks) ->
+        case run_parallel_tasks(tasks, state.context) do
+          {:ok, data} ->
+            new_state = handle_step_success(state, step, data)
+            {:continue, new_state}
+
+          {:error, reason} ->
+            handle_step_error(step, reason, state)
+        end
+
+      other ->
+        handle_step_error(step, {:invalid_parallel_return, other}, state)
+    end
+  end
+
   defp execute_step(step, state) do
     Logger.metadata(run_id: state.run_id, step: step.name)
     Logger.debug("running step #{step.name}")
 
-    result =
-      try do
-        Task.async(fn -> Step.run(step, state.workflow, state.context) end)
-        |> Task.await(:infinity)
-      catch
-        kind, reason ->
-          Logger.error("step #{step.name} crashed: #{inspect({kind, reason})}")
-          {:error, {kind, reason}}
-      end
-
-    case result do
+    case invoke_step(step, state) do
       {:ok, data} when is_map(data) ->
-        new_state =
-          state
-          |> Map.update!(:context, fn ctx ->
-            ctx
-            |> Map.merge(data)
-            |> Map.delete(:human_input)
-          end)
-          |> increment_step()
-          |> push_history(%{step: step.name, status: :ok})
-          |> publish_event(%{event: :step_completed, step: step.name})
-
+        new_state = handle_step_success(state, step, data)
         {:continue, new_state}
 
       {:suspend, info} when is_map(info) ->
@@ -231,6 +234,29 @@ defmodule Synaptic.Runner do
     end
   end
 
+  defp invoke_step(step, state) do
+    try do
+      Task.async(fn -> Step.run(step, state.workflow, state.context) end)
+      |> Task.await(:infinity)
+    catch
+      kind, reason ->
+        Logger.error("step #{step.name} crashed: #{inspect({kind, reason})}")
+        {:error, {kind, reason}}
+    end
+  end
+
+  defp handle_step_success(state, step, data) do
+    state
+    |> Map.update!(:context, fn ctx ->
+      ctx
+      |> Map.merge(data)
+      |> Map.delete(:human_input)
+    end)
+    |> increment_step()
+    |> push_history(%{step: step.name, status: :ok})
+    |> publish_event(%{event: :step_completed, step: step.name})
+  end
+
   defp increment_step(state) do
     Map.update!(state, :current_step_index, &(&1 + 1))
   end
@@ -249,6 +275,34 @@ defmodule Synaptic.Runner do
     PubSub.broadcast(@pubsub, topic(state.run_id), {:synaptic_event, event})
     state
   end
+
+  defp run_parallel_tasks(tasks, context) when is_list(tasks) do
+    stream =
+      Task.async_stream(tasks, &run_parallel_task(&1, context), timeout: :infinity, ordered: false)
+
+    Enum.reduce_while(stream, {:ok, %{}}, fn
+      {:ok, {:ok, data}}, {:ok, acc} when is_map(data) ->
+        {:cont, {:ok, Map.merge(acc, data)}}
+
+      {:ok, {:ok, invalid}}, _acc ->
+        {:halt, {:error, {:invalid_parallel_task_return, {:ok, invalid}}}}
+
+      {:ok, {:error, reason}}, _acc ->
+        {:halt, {:error, reason}}
+
+      {:ok, other}, _acc ->
+        {:halt, {:error, {:invalid_parallel_task_return, other}}}
+
+      {:exit, reason}, _acc ->
+        {:halt, {:error, {:parallel_task_crash, reason}}}
+    end)
+  end
+
+  defp run_parallel_tasks(_tasks, _context), do: {:error, :invalid_parallel_tasks}
+
+  defp run_parallel_task(fun, context) when is_function(fun, 1), do: fun.(context)
+  defp run_parallel_task(fun, _context) when is_function(fun, 0), do: fun.()
+  defp run_parallel_task(_other, _context), do: {:error, :invalid_parallel_task}
 
   defp topic(run_id), do: "synaptic:run:" <> run_id
 

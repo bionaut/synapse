@@ -21,12 +21,32 @@ defmodule Synaptic.DSLTest do
     commit()
   end
 
+  defmodule ParallelWorkflow do
+    use Synaptic.Workflow
+
+    parallel_step :fan_out do
+      [
+        fn _ctx -> {:ok, %{first: true}} end,
+        fn _ctx -> {:ok, %{second: true}} end
+      ]
+    end
+
+    commit()
+  end
+
   test "workflow definition includes ordered step metadata" do
     definition = Synaptic.workflow_definition(ExampleWorkflow)
 
     assert definition.module == ExampleWorkflow
     assert Enum.map(definition.steps, & &1.name) == [:greet, :review, :finalize]
     assert Enum.at(definition.steps, 1).resume_schema == %{approved: :boolean}
+  end
+
+  test "parallel steps are marked in the workflow definition" do
+    definition = Synaptic.workflow_definition(ParallelWorkflow)
+    [step] = definition.steps
+
+    assert step.type == :parallel
   end
 
   test "suspend_for_human helper formats payload" do

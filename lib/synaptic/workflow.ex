@@ -33,6 +33,26 @@ defmodule Synaptic.Workflow do
   end
 
   @doc """
+  Declares a parallel workflow step. The block must return a list of
+  anonymous functions that receive the workflow `context` (map). Each
+  function runs concurrently and must return `{:ok, map}` or `{:error, term}`.
+  The step succeeds only when all parallel tasks succeed, and their maps are
+  merged into the accumulated context.
+  """
+  defmacro parallel_step(name, opts \\ [], do: block) do
+    opts = Keyword.put(opts, :type, :parallel)
+
+    quote do
+      @synaptic_steps Synaptic.Workflow.__step_definition__(unquote(name), unquote(opts))
+
+      def __synaptic_handle__(unquote(name), var!(context)) do
+        _ = var!(context)
+        unquote(block)
+      end
+    end
+  end
+
+  @doc """
   Marks that the workflow definition has declared its terminal point. In the
   MVP the macro only exists to nudge authors so that tests reflect the full
   lifecycle.

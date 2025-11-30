@@ -169,6 +169,30 @@ end
 Synaptic.resume(run_id, %{approved: true})
 ```
 
+### Parallel steps
+
+Use `parallel_step/3` when you want to fan out work, wait for all tasks, and
+continue once every branch returns. The block must return a list of functions
+that accept the current `context`:
+
+```elixir
+parallel_step :generate_initial_content do
+  [
+    fn ctx -> TitleDescriptionSteps.generate_and_update(ctx) end,
+    fn ctx -> MetadataSteps.generate_and_update(ctx) end,
+    fn ctx -> ConceptOutlinerSteps.execute(ctx) end
+  ]
+end
+
+step :persist_concepts do
+  PersistenceSteps.persist_concepts(context)
+end
+```
+
+Each parallel task returns `{:ok, map}` or `{:error, reason}`. Synaptic runs the
+tasks concurrently and merges their maps into the workflow context before
+continuing to the next `step/3`.
+
 ### Stopping a run
 
 To cancel a workflow early (for example, if a human rejected it out-of-band),

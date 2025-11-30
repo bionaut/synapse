@@ -39,6 +39,34 @@ defmodule Synaptic.WorkflowExecutionTest do
     commit()
   end
 
+  defmodule ParallelWorkflow do
+    use Synaptic.Workflow
+
+    parallel_step :generate_parts do
+      [
+        fn ctx ->
+          send(ctx.test_pid, {:task_started, :title})
+          Process.sleep(25)
+          {:ok, %{title: "Title for #{ctx.base}"}}
+        end,
+        fn ctx ->
+          send(ctx.test_pid, {:task_started, :metadata})
+          {:ok, %{metadata: ctx.base * 2}}
+        end
+      ]
+    end
+
+    step :finalize do
+      if Map.has_key?(context, :title) and Map.get(context, :metadata) do
+        {:ok, %{status: :assembled}}
+      else
+        {:error, :missing_parallel_results}
+      end
+    end
+
+    commit()
+  end
+
   test "workflow suspends and resumes" do
     {:ok, run_id} = Synaptic.start(ApprovalWorkflow, %{})
 
@@ -80,6 +108,16 @@ defmodule Synaptic.WorkflowExecutionTest do
                    1_000
 
     assert {:error, :not_found} = Synaptic.stop(run_id)
+  end
+
+  test "parallel steps run each task and merge context" do
+    parent = self()
+    {:ok, run_id} = Synaptic.start(ParallelWorkflow, %{base: 5, test_pid: parent})
+    snapshot = wait_for(run_id, :completed)
+
+    assert snapshot.context[:status] == :assembled
+    assert_receive {:task_started, :title}, 500
+    assert_receive {:task_started, :metadata}, 500
   end
 
   defp wait_for(run_id, status, attempts \\ 20)
